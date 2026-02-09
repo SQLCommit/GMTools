@@ -1,0 +1,7 @@
+# SQLite runtime files (auto-managed by WAL mode)
+*.db
+*.db-wal
+*.db-shm
+
+# Ashita per-character settings (generated at runtime)
+settings/
