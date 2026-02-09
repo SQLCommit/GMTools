@@ -15,7 +15,8 @@ A comprehensive GM command interface for LandSandBoat private servers. Browse, e
 
 ## Requirements
 
-- Ashita v4.30+ (uses built-in LuaSQLite3 and ImGui 1.92.3)
+- Ashita v4.30 (uses built-in LuaSQLite3)
+	- This release has only been tested with Ashita v4.30
 - LandSandBoat server
 - GM account (permission level 1+)
 
