@@ -1,4 +1,4 @@
-# GM Tools v1.0.0 - GM Command Helper for Ashita v4
+# GM Tools v1.0.0 - GM Command Helper for Ashita v4.3
 
 A comprehensive GM command interface for LandSandBoat private servers. Browse, execute, and manage 150+ GM commands through an ImGui GUI without memorizing syntax or item IDs.
 
