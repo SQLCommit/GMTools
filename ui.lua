@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.0 - ImGui UI Rendering
+    GM Tools v1.0.3 - ImGui UI Rendering
     Sidebar + detail panel layout with categories, favorites, presets, and history views.
 ]]--
 
@@ -65,6 +65,11 @@ ui.new_preset_desc_size = 256;
 ui.new_preset_cmds = { '', };
 ui.new_preset_cmds_size = 1024;
 
+-- Preset edit mode
+ui.editing_preset_id = nil;        -- nil = create mode, number = editing that preset ID
+ui.queue_preset_name = '';         -- name of the currently running preset
+ui.restore_defaults_confirm = false; -- confirmation flag for restore defaults
+
 -- Job Gear editing state
 ui.selected_job = { 0, }; -- combo index (0-based)
 ui.jg_working = nil;       -- working copy: { [slot_name] = T{ {id=,name=}, ... } }
@@ -120,9 +125,37 @@ local colors = {
     perm_hi  = { 1.0, 0.5, 0.5, 0.6 },
 };
 
-------------------------------------------------------------
+-- Pre-allocated ImGui size/position tables (eliminates per-frame table allocations)
+local sizes = {
+    sidebar       = { 140, -24 },
+    panel         = { 0, -24 },
+    window        = { 680, 450 },
+    window_min    = { 500, 300 },
+    window_max    = { FLT_MAX, FLT_MAX },
+    window_pos    = { 100, 100 },
+    progress_bar  = { -60, 0 },
+    btn_run       = { 40, 0 },
+    btn_edit      = { 36, 0 },
+    btn_del       = { 32, 0 },
+    btn_cancel    = { 80, 0 },
+    multiline     = { 0, 80 },
+    jg_table      = { 0, -56 },
+    popup         = { 450, 350 },
+    popup_results = { 0, -30 },
+    item_table    = { 0, -1 },
+};
+
+-- Pre-allocated button style colors (eliminates per-frame table allocations)
+local btn_colors = {
+    view_active = { 0.3, 0.5, 0.8, 1.0 },
+    stop        = { 0.8, 0.2, 0.2, 1.0 },
+    stop_hover  = { 1.0, 0.3, 0.3, 1.0 },
+    reset       = { 0.3, 0.3, 0.3, 1.0 },
+};
+
+-------------------------------------------------------------------------------
 -- Initialization
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 function ui.init(commands, presets, db, jobgear, s)
     ui.commands = commands;
@@ -154,9 +187,9 @@ function ui.apply_settings(s)
     end
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Favorites Cache
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function refresh_favorites_cache()
     ui.favorites_cache = ui.db.get_favorites();
@@ -181,9 +214,9 @@ local function is_favorite_cached(cmd)
     return ui.favorites_set[cmd] == true;
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Custom Presets Cache
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function get_cached_custom_presets()
     if (ui.db.custom_presets_dirty or ui.custom_presets_cache == nil) then
@@ -193,9 +226,9 @@ local function get_cached_custom_presets()
     return ui.custom_presets_cache;
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- History Cache
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function get_cached_history(query)
     if (ui.db.history_dirty or ui.history_cache == nil or ui.history_cache_query ~= query) then
@@ -210,9 +243,9 @@ local function get_cached_history(query)
     return ui.history_cache;
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Combo String Cache
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function get_combo_string(options_name)
     if (ui.combo_cache[options_name] ~= nil) then
@@ -222,22 +255,22 @@ local function get_combo_string(options_name)
     local options = ui.commands[options_name];
     if (options == nil) then return '\0'; end
 
-    local items = '';
-    for _, opt in ipairs(options) do
+    local parts = {};
+    for i, opt in ipairs(options) do
         if (options_name == 'zones') then
-            items = items .. ('%d: %s'):fmt(opt.id, opt.name) .. '\0';
+            parts[i] = ('%d: %s'):fmt(opt.id, opt.name);
         else
-            items = items .. opt.name .. '\0';
+            parts[i] = opt.name;
         end
     end
-    items = items .. '\0';
+    local items = table.concat(parts, '\0') .. '\0\0';
     ui.combo_cache[options_name] = items;
     return items;
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Clipboard Helpers (wrapped in pcall for safety)
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function clipboard_set(text)
     local ok, err = pcall(ashita.misc.set_clipboard, text);
@@ -255,9 +288,9 @@ local function tid(name)
     return name .. '_s' .. tostring(ui.table_salt);
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Command Execution
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function execute_command(cmd)
     if (cmd == nil or cmd == '') then return; end
@@ -362,9 +395,9 @@ local function build_friendly_name(cmd_def, buffers)
     return cmd_def.name;
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Item Cache (incremental build over multiple frames)
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local ITEM_CACHE_MAX_ID = 29000;
 local ITEM_CACHE_PER_FRAME = 2000;
@@ -387,7 +420,7 @@ local function build_item_cache_step()
 
     for id = start_id, end_id do
         local item = res_mgr:GetItemById(id);
-        if (item ~= nil) then
+        if (item ~= nil and item.Name ~= nil) then
             local name = item.Name[1];
             if (name ~= nil and name ~= '' and name ~= '.' and name ~= '(Undefined)') then
                 ui.item_cache:append({
@@ -433,15 +466,21 @@ local item_type_names = {
     [16] = 'Relic',    [17] = 'Maze',
 };
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Preset Queue Processing
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 function ui.process_queue()
     -- Incrementally build item cache if in progress
     build_item_cache_step();
 
     if (#ui.cmd_queue == 0) then return; end
+
+    -- Don't dispatch commands during zone transitions or character select
+    local mem = AshitaCore:GetMemoryManager();
+    if (mem == nil) then return; end
+    local party = mem:GetParty();
+    if (party == nil or (party:GetMemberZone(0) or 0) == 0) then return; end
 
     local now = os.clock();
     if (now - ui.queue_timer < ui.queue_delay[1]) then return; end
@@ -452,6 +491,7 @@ function ui.process_queue()
     ui.queue_timer = now;
 
     if (#ui.cmd_queue == 0) then
+        ui.queue_preset_name = '';
         print(chat.header('gmtools'):append(chat.success('Preset complete.')));
     end
 end
@@ -462,6 +502,7 @@ local function run_preset(preset)
         ui.cmd_queue:append(cmd);
     end
     ui.queue_total = #ui.cmd_queue;
+    ui.queue_preset_name = preset.name;
     ui.queue_timer = os.clock() - ui.queue_delay[1]; -- run first immediately
     print(chat.header('gmtools'):append(chat.message('Running preset: ')):append(chat.success(preset.name))
         :append(chat.message((' (%d cmds, %.1fs delay)'):fmt(ui.queue_total, ui.queue_delay[1]))));
@@ -471,6 +512,7 @@ function ui.stop_queue()
     local remaining = #ui.cmd_queue;
     ui.cmd_queue = T{};
     ui.queue_total = 0;
+    ui.queue_preset_name = '';
     if (remaining > 0) then
         print(chat.header('gmtools'):append(chat.error(('Preset stopped (%d commands skipped).'):fmt(remaining))));
     end
@@ -594,16 +636,8 @@ function ui.start_item_search(query)
 end
 
 function ui.run_preset_by_name(name)
-    -- Check built-in presets
-    for _, p in ipairs(ui.presets.defaults) do
-        if (p.name:lower() == name:lower()) then
-            run_preset(p);
-            return true;
-        end
-    end
-    -- Check custom presets
-    local custom = get_cached_custom_presets();
-    for _, p in ipairs(custom) do
+    local presets_list = get_cached_custom_presets();
+    for _, p in ipairs(presets_list) do
         if (p.name:lower() == name:lower()) then
             run_preset(p);
             return true;
@@ -613,9 +647,9 @@ function ui.run_preset_by_name(name)
     return false;
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Argument Input Rendering
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function render_args(cmd_def, cat_idx, cmd_idx)
     local buffers = get_or_create_buffer(cat_idx, cmd_idx, cmd_def);
@@ -653,12 +687,12 @@ local function render_args(cmd_def, cat_idx, cmd_idx)
     end
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Sidebar Rendering
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function render_sidebar()
-    imgui.BeginChild('##sidebar', { 140, -24, }, ImGuiChildFlags_Borders);
+    imgui.BeginChild('##sidebar', sizes.sidebar, ImGuiChildFlags_Borders);
         for i, cat in ipairs(ui.commands.categories) do
             local is_selected = (ui.selected_category == i - 1);
             if (imgui.Selectable(cat.name .. '##cat_' .. i, is_selected)) then
@@ -668,9 +702,9 @@ local function render_sidebar()
     imgui.EndChild();
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Command Table Rendering (Detail Panel)
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function render_command_table(cat_idx, category)
     local table_flags = bit.bor(
@@ -690,75 +724,73 @@ local function render_command_table(cat_idx, category)
         for cmd_idx, cmd_def in ipairs(category.commands) do
             -- Filter by GM level (perm defaults to 1 if not set)
             local cmd_perm = cmd_def.perm or 1;
-            if (cmd_perm > ui.gm_level[1]) then
-                goto continue_cmd;
-            end
+            if (cmd_perm <= ui.gm_level[1]) then
 
-            imgui.TableNextRow();
+                imgui.TableNextRow();
 
-            -- Column 1: Command name + perm badge
-            imgui.TableNextColumn();
-            imgui.Text(cmd_def.name);
-            if (cmd_perm > 1) then
-                imgui.SameLine();
-                imgui.TextColored(colors.muted, '[' .. (ui.gm_level_short[cmd_perm] or '?') .. ']');
-            end
-            if (imgui.IsItemHovered()) then
-                imgui.SetTooltip(cmd_def.desc .. '\nSyntax: ' .. cmd_def.cmd .. '\nPermission: ' .. tostring(cmd_perm));
-            end
-
-            -- Column 2: Argument inputs
-            imgui.TableNextColumn();
-            if (#cmd_def.args > 0) then
-                render_args(cmd_def, cat_idx, cmd_idx);
-            else
-                imgui.TextColored(colors.muted, '(none)');
-            end
-
-            -- Build command once for both Run and Fav buttons
-            local row_buffers = get_or_create_buffer(cat_idx, cmd_idx, cmd_def);
-            local row_cmd = build_command(cmd_def, row_buffers);
-
-            -- Column 3: Execute button
-            imgui.TableNextColumn();
-            if (imgui.Button('>' .. '##run_' .. cat_idx .. '_' .. cmd_idx)) then
-                execute_command(row_cmd);
-            end
-            if (imgui.IsItemHovered()) then
-                imgui.SetTooltip('Execute command');
-            end
-
-            -- Column 4: Favorite toggle (saves full command with current args)
-            imgui.TableNextColumn();
-            local is_fav = is_favorite_cached(row_cmd);
-            if (is_fav) then
-                imgui.PushStyleColor(ImGuiCol_Text, colors.fav_on);
-            end
-            if (imgui.Button((is_fav and '*' or '+') .. '##fav_' .. cat_idx .. '_' .. cmd_idx)) then
-                if (is_fav) then
-                    ui.db.remove_favorite_by_cmd(row_cmd);
-                else
-                    local friendly = build_friendly_name(cmd_def, row_buffers);
-                    ui.db.add_favorite(friendly, row_cmd, category.name);
+                -- Column 1: Command name + perm badge
+                imgui.TableNextColumn();
+                imgui.Text(cmd_def.name);
+                if (cmd_perm > 1) then
+                    imgui.SameLine();
+                    imgui.TextColored(colors.muted, '[' .. (ui.gm_level_short[cmd_perm] or '?') .. ']');
                 end
-            end
-            if (is_fav) then
-                imgui.PopStyleColor();
-            end
-            if (imgui.IsItemHovered()) then
-                imgui.SetTooltip(is_fav and ('Remove from favorites:\n' .. row_cmd) or ('Add to favorites:\n' .. row_cmd));
-            end
+                if (imgui.IsItemHovered()) then
+                    imgui.SetTooltip(cmd_def.desc .. '\nSyntax: ' .. cmd_def.cmd .. '\nPermission: ' .. tostring(cmd_perm));
+                end
 
-            ::continue_cmd::
+                -- Column 2: Argument inputs
+                imgui.TableNextColumn();
+                if (#cmd_def.args > 0) then
+                    render_args(cmd_def, cat_idx, cmd_idx);
+                else
+                    imgui.TextColored(colors.muted, '(none)');
+                end
+
+                -- Build command once for both Run and Fav buttons
+                local row_buffers = get_or_create_buffer(cat_idx, cmd_idx, cmd_def);
+                local row_cmd = build_command(cmd_def, row_buffers);
+
+                -- Column 3: Execute button
+                imgui.TableNextColumn();
+                if (imgui.Button('>' .. '##run_' .. cat_idx .. '_' .. cmd_idx)) then
+                    execute_command(row_cmd);
+                end
+                if (imgui.IsItemHovered()) then
+                    imgui.SetTooltip('Execute command');
+                end
+
+                -- Column 4: Favorite toggle (saves full command with current args)
+                imgui.TableNextColumn();
+                local is_fav = is_favorite_cached(row_cmd);
+                if (is_fav) then
+                    imgui.PushStyleColor(ImGuiCol_Text, colors.fav_on);
+                end
+                if (imgui.Button((is_fav and '*' or '+') .. '##fav_' .. cat_idx .. '_' .. cmd_idx)) then
+                    if (is_fav) then
+                        ui.db.remove_favorite_by_cmd(row_cmd);
+                    else
+                        local friendly = build_friendly_name(cmd_def, row_buffers);
+                        ui.db.add_favorite(friendly, row_cmd, category.name);
+                    end
+                end
+                if (is_fav) then
+                    imgui.PopStyleColor();
+                end
+                if (imgui.IsItemHovered()) then
+                    imgui.SetTooltip(is_fav and ('Remove from favorites:\n' .. row_cmd) or ('Add to favorites:\n' .. row_cmd));
+                end
+
+            end
         end
 
         imgui.EndTable();
     end
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Favorites View
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function render_favorites()
     local favorites = get_cached_favorites();
@@ -836,110 +868,130 @@ local function render_favorites()
     end
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Presets View
-------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+local function clear_preset_builder()
+    ui.new_preset_name[1] = '';
+    ui.new_preset_desc[1] = '';
+    ui.new_preset_cmds[1] = '';
+    ui.editing_preset_id = nil;
+end
 
 local function render_presets()
-    -- Delay slider
+    local is_running = #ui.cmd_queue > 0;
+
+    -- Progress bar + stop button when a preset is running
+    if (is_running) then
+        local progress = ui.queue_total - #ui.cmd_queue;
+        local label = ('Running: %s (%d/%d)'):fmt(
+            ui.queue_preset_name ~= '' and ui.queue_preset_name or 'Preset',
+            progress, ui.queue_total
+        );
+        imgui.ProgressBar(progress / ui.queue_total, sizes.progress_bar, label);
+        imgui.SameLine();
+        imgui.PushStyleColor(ImGuiCol_Button, btn_colors.stop);
+        imgui.PushStyleColor(ImGuiCol_ButtonHovered, btn_colors.stop_hover);
+        if (imgui.Button('Stop##preset_stop')) then
+            ui.stop_queue();
+        end
+        imgui.PopStyleColor(2);
+        imgui.Separator();
+    end
+
+    -- Settings row
     imgui.PushItemWidth(200);
     if (imgui.SliderFloat('Command Delay (sec)', ui.queue_delay, 0.5, 5.0, '%.1f')) then
         ui.settings_dirty = true;
     end
     imgui.PopItemWidth();
     imgui.ShowHelp('Time between each command in a preset.\nIncrease if commands are being skipped.\n1.5s works for most presets, use 2-3s for large ones.');
-    imgui.Separator();
 
-    -- Built-in presets
-    imgui.TextColored(colors.header, 'Quick Setup Presets');
-    imgui.Separator();
-
-    for i, preset in ipairs(ui.presets.defaults) do
-        imgui.PushID('preset_' .. i);
-        if (imgui.Button('Run', { 40, 0 })) then
-            run_preset(preset);
+    if (ui.settings ~= nil) then
+        local v = { ui.settings.show_on_load };
+        if (imgui.Checkbox('Open window when addon loads', v)) then
+            ui.settings.show_on_load = v[1];
+            ui.settings_dirty = true;
         end
-        imgui.SameLine();
-        if (imgui.Button('Copy', { 40, 0 })) then
-            local ok_enc, export_str = pcall(json.encode, {
-                name = preset.name,
-                desc = preset.desc,
-                commands = preset.commands,
-            });
-            if (ok_enc and export_str ~= nil) then
-                clipboard_set(export_str);
-                print(chat.header('gmtools'):append(chat.success('Preset copied to clipboard: ')):append(chat.message(preset.name)));
-            end
-        end
-        if (imgui.IsItemHovered()) then
-            imgui.SetTooltip('Copy preset to clipboard as JSON');
-        end
-        imgui.SameLine();
-        imgui.Text(preset.name);
-        if (imgui.IsItemHovered()) then
-            local tip = preset.desc .. '\n\nCommands:';
-            for _, cmd in ipairs(preset.commands) do
-                tip = tip .. '\n  ' .. cmd;
-            end
-            imgui.SetTooltip(tip);
-        end
-        imgui.PopID();
     end
 
-    -- Custom presets
-    imgui.NewLine();
-    imgui.TextColored(colors.header, 'Custom Presets');
     imgui.Separator();
 
-    local custom = get_cached_custom_presets();
-    if (#custom > 0) then
-        for _, preset in ipairs(custom) do
-            imgui.PushID('cpreset_' .. preset.id);
-            if (imgui.Button('Run', { 40, 0 })) then
+    -- Unified preset list
+    imgui.TextColored(colors.header, 'Presets');
+    imgui.Separator();
+
+    local presets_list = get_cached_custom_presets();
+    if (#presets_list > 0) then
+        for _, preset in ipairs(presets_list) do
+            imgui.PushID('preset_' .. preset.id);
+
+            -- Disable Run/Edit/Del while queue is active
+            if (is_running) then imgui.BeginDisabled(); end
+
+            if (imgui.Button('Run', sizes.btn_run)) then
                 run_preset(preset);
             end
             imgui.SameLine();
-            if (imgui.Button('Copy', { 40, 0 })) then
-                local ok_enc, export_str = pcall(json.encode, {
-                    name = preset.name,
-                    desc = preset.desc or '',
-                    commands = preset.commands,
-                });
-                if (ok_enc and export_str ~= nil) then
-                    clipboard_set(export_str);
-                    print(chat.header('gmtools'):append(chat.success('Preset copied to clipboard: ')):append(chat.message(preset.name)));
+            if (imgui.Button('Edit', sizes.btn_edit)) then
+                -- Populate builder with this preset's data
+                ui.editing_preset_id = preset.id;
+                ui.new_preset_name[1] = preset.name or '';
+                ui.new_preset_desc[1] = preset.desc or '';
+                -- Convert commands table back to newline-separated text
+                local lines = T{};
+                for _, cmd in ipairs(preset.commands) do
+                    lines:append(tostring(cmd));
+                end
+                ui.new_preset_cmds[1] = lines:concat('\n');
+            end
+            imgui.SameLine();
+            if (imgui.Button('Del', sizes.btn_del)) then
+                ui.db.delete_custom_preset(preset.id);
+                -- If we were editing this preset, cancel edit
+                if (ui.editing_preset_id == preset.id) then
+                    clear_preset_builder();
                 end
             end
-            if (imgui.IsItemHovered()) then
-                imgui.SetTooltip('Copy preset to clipboard as JSON');
-            end
-            imgui.SameLine();
-            if (imgui.Button('Del')) then
-                ui.db.delete_custom_preset(preset.id);
-            end
+
+            if (is_running) then imgui.EndDisabled(); end
+
             imgui.SameLine();
             imgui.Text(preset.name);
-            if (imgui.IsItemHovered() and preset.desc ~= nil and preset.desc ~= '') then
-                imgui.SetTooltip(preset.desc);
+            if (imgui.IsItemHovered()) then
+                local tip = (preset.desc or '') .. '\n\nCommands:';
+                for _, cmd in ipairs(preset.commands) do
+                    tip = tip .. '\n  ' .. cmd;
+                end
+                tip = tip .. '\n\n(' .. #preset.commands .. ' commands)';
+                imgui.SetTooltip(tip);
             end
             imgui.PopID();
         end
     else
-        imgui.TextColored(colors.muted, 'No custom presets.');
+        imgui.TextColored(colors.muted, 'No presets. Create one below or use Restore Defaults.');
     end
 
-    -- New preset builder
+    -- Preset builder (create or edit mode)
     imgui.NewLine();
     imgui.Separator();
-    imgui.TextColored(colors.header, 'Create Custom Preset');
+
+    if (ui.editing_preset_id ~= nil) then
+        imgui.TextColored(colors.header, 'Editing Preset');
+        imgui.SameLine();
+        imgui.TextColored(colors.success, '(ID: ' .. tostring(ui.editing_preset_id) .. ')');
+    else
+        imgui.TextColored(colors.header, 'Create New Preset');
+    end
 
     imgui.PushItemWidth(200);
-    imgui.InputText('Name##new_preset', ui.new_preset_name, ui.new_preset_name_size);
-    imgui.InputText('Description##new_preset', ui.new_preset_desc, ui.new_preset_desc_size);
+    imgui.InputTextWithHint('Name##new_preset', 'Preset name...', ui.new_preset_name, ui.new_preset_name_size);
+    imgui.InputTextWithHint('Description##new_preset', 'Description...', ui.new_preset_desc, ui.new_preset_desc_size);
     imgui.PopItemWidth();
 
     imgui.PushItemWidth(400);
-    imgui.InputTextMultiline('Commands##new_preset', ui.new_preset_cmds, ui.new_preset_cmds_size, { 0, 80 });
+    imgui.InputTextMultiline('Commands##new_preset', ui.new_preset_cmds, ui.new_preset_cmds_size, sizes.multiline);
     imgui.PopItemWidth();
     imgui.ShowHelp('Enter one GM command per line (e.g., !setplayerlevel 99)');
 
@@ -974,39 +1026,91 @@ local function render_presets()
     end
 
     imgui.SameLine();
-    if (imgui.Button('Save Preset')) then
-        local name = ui.new_preset_name[1]:trim('\0');
-        local desc = ui.new_preset_desc[1]:trim('\0');
-        local cmds_raw = ui.new_preset_cmds[1]:trim('\0');
+    if (ui.editing_preset_id ~= nil) then
+        -- Edit mode: Save Changes + Cancel
+        if (imgui.Button('Save Changes')) then
+            local name = ui.new_preset_name[1]:trim('\0');
+            local desc = ui.new_preset_desc[1]:trim('\0');
+            local cmds_raw = ui.new_preset_cmds[1]:trim('\0');
 
-        if (name ~= '' and cmds_raw ~= '') then
-            -- Split by newlines
-            local cmds_list = T{};
-            for line in cmds_raw:gmatch('[^\r\n]+') do
-                local trimmed = line:match('^%s*(.-)%s*$');
-                if (trimmed ~= '' and trimmed:sub(1, 1) == '!') then
-                    cmds_list:append(trimmed);
+            if (name ~= '' and cmds_raw ~= '') then
+                local cmds_list = T{};
+                for line in cmds_raw:gmatch('[^\r\n]+') do
+                    local trimmed = line:match('^%s*(.-)%s*$');
+                    if (trimmed ~= '' and trimmed:sub(1, 1) == '!') then
+                        cmds_list:append(trimmed);
+                    end
+                end
+
+                if (#cmds_list > 0) then
+                    ui.db.update_custom_preset(ui.editing_preset_id, name, desc, cmds_list);
+                    print(chat.header('gmtools'):append(chat.success('Preset updated: ')):append(chat.message(name)));
+                    clear_preset_builder();
                 end
             end
+        end
+        imgui.SameLine();
+        if (imgui.Button('Cancel')) then
+            clear_preset_builder();
+        end
+    else
+        -- Create mode: Save Preset
+        if (imgui.Button('Save Preset')) then
+            local name = ui.new_preset_name[1]:trim('\0');
+            local desc = ui.new_preset_desc[1]:trim('\0');
+            local cmds_raw = ui.new_preset_cmds[1]:trim('\0');
 
-            if (#cmds_list > 0) then
-                ui.db.save_custom_preset(name, desc, cmds_list);
-                ui.new_preset_name[1] = '';
-                ui.new_preset_desc[1] = '';
-                ui.new_preset_cmds[1] = '';
-                print(chat.header('gmtools'):append(chat.success('Custom preset saved: ')):append(chat.message(name)));
+            if (name ~= '' and cmds_raw ~= '') then
+                local cmds_list = T{};
+                for line in cmds_raw:gmatch('[^\r\n]+') do
+                    local trimmed = line:match('^%s*(.-)%s*$');
+                    if (trimmed ~= '' and trimmed:sub(1, 1) == '!') then
+                        cmds_list:append(trimmed);
+                    end
+                end
+
+                if (#cmds_list > 0) then
+                    ui.db.save_custom_preset(name, desc, cmds_list);
+                    clear_preset_builder();
+                    print(chat.header('gmtools'):append(chat.success('Preset saved: ')):append(chat.message(name)));
+                end
             end
+        end
+    end
+
+    -- Restore Defaults button
+    imgui.NewLine();
+    imgui.Separator();
+    if (ui.restore_defaults_confirm) then
+        imgui.TextColored(colors.error, 'This will delete ALL presets and re-import the built-in defaults.');
+        if (imgui.Button('Yes, Restore Defaults')) then
+            ui.db.clear_all_presets();
+            ui.db.seed_defaults(ui.presets.defaults);
+            clear_preset_builder();
+            ui.restore_defaults_confirm = false;
+            print(chat.header('gmtools'):append(chat.success('Presets restored to defaults.')));
+        end
+        imgui.SameLine();
+        if (imgui.Button('Cancel##restore')) then
+            ui.restore_defaults_confirm = false;
+        end
+    else
+        if (imgui.Button('Restore Defaults')) then
+            ui.restore_defaults_confirm = true;
+        end
+        if (imgui.IsItemHovered()) then
+            imgui.SetTooltip('Delete all presets and re-import the built-in defaults.');
         end
     end
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- History View
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function render_history()
     imgui.PushItemWidth(200);
-    imgui.InputText('Search##hist', ui.history_search, ui.history_search_size);
+    imgui.InputTextWithHint('Search##hist', 'Search history...', ui.history_search, ui.history_search_size);
     imgui.PopItemWidth();
 
     imgui.SameLine();
@@ -1045,7 +1149,7 @@ local function render_history()
             imgui.TableNextRow();
 
             imgui.TableNextColumn();
-            imgui.TextColored(colors.muted, os.date('%H:%M:%S', entry.timestamp));
+            imgui.TextColored(colors.muted, entry.time_fmt or '');
 
             imgui.TableNextColumn();
             imgui.Text(entry.cmd);
@@ -1060,20 +1164,28 @@ local function render_history()
     end
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Job Gear View (per-slot with customization)
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
--- Resolve item ID to name using FFXI resource manager
+-- Resolve item ID to name using FFXI resource manager (cached)
+local item_name_cache = {};
+
 local function resolve_item_name(id)
+    local cached = item_name_cache[id];
+    if (cached ~= nil) then return cached; end
+
     local res = AshitaCore:GetResourceManager();
     if (res ~= nil) then
         local item = res:GetItemById(id);
         if (item ~= nil and item.Name ~= nil and item.Name[1] ~= nil and item.Name[1] ~= '' and item.Name[1] ~= '.') then
+            item_name_cache[id] = item.Name[1];
             return item.Name[1];
         end
     end
-    return ('Item #%d'):fmt(id);
+    local fallback = ('Item #%d'):fmt(id);
+    item_name_cache[id] = fallback;
+    return fallback;
 end
 
 -- Load job gear from DB override or hardcoded defaults
@@ -1108,7 +1220,7 @@ local function render_jg_search_popup()
         ui.item_cache_count = 0;
     end
 
-    imgui.SetNextWindowSize({ 450, 350, }, ImGuiCond_FirstUseEver);
+    imgui.SetNextWindowSize(sizes.popup, ImGuiCond_FirstUseEver);
 
     if (imgui.BeginPopupModal('Item Search##jg_popup', nil, ImGuiWindowFlags_None)) then
         imgui.TextColored(colors.header, 'Adding to slot: ' .. (ui.jg_search_slot or '?'));
@@ -1120,7 +1232,7 @@ local function render_jg_search_popup()
         else
             -- Search box
             imgui.PushItemWidth(280);
-            local changed = imgui.InputText('##jg_popup_search', ui.jg_search_text, ui.jg_search_text_size, ImGuiInputTextFlags_EnterReturnsTrue);
+            local changed = imgui.InputTextWithHint('##jg_popup_search', 'Search items...', ui.jg_search_text, ui.jg_search_text_size, ImGuiInputTextFlags_EnterReturnsTrue);
             imgui.PopItemWidth();
             imgui.SameLine();
             if (imgui.Button('Search') or changed) then
@@ -1145,7 +1257,7 @@ local function render_jg_search_popup()
                 imgui.TextColored(colors.muted, ('%d results'):fmt(#ui.jg_search_results));
 
                 local tflags = bit.bor(ImGuiTableFlags_RowBg, ImGuiTableFlags_BordersInnerH, ImGuiTableFlags_ScrollY, ImGuiTableFlags_SizingStretchProp);
-                if (imgui.BeginTable('##jg_popup_results', 3, tflags, { 0, -30 })) then
+                if (imgui.BeginTable('##jg_popup_results', 3, tflags, sizes.popup_results)) then
                     imgui.TableSetupColumn('Name', ImGuiTableColumnFlags_WidthStretch);
                     imgui.TableSetupColumn('ID',   ImGuiTableColumnFlags_WidthFixed, 55);
                     imgui.TableSetupColumn('Add',  ImGuiTableColumnFlags_WidthFixed, 32);
@@ -1183,7 +1295,7 @@ local function render_jg_search_popup()
         end
 
         -- Close button
-        if (imgui.Button('Cancel', { 80, 0 })) then
+        if (imgui.Button('Cancel', sizes.btn_cancel)) then
             ui.jg_search_open = false;
             imgui.CloseCurrentPopup();
         end
@@ -1345,7 +1457,7 @@ local function render_jobgear()
     local total_items = ui.jobgear.count_items(ui.jg_working);
     imgui.TextColored(colors.muted, ('%d items'):fmt(total_items));
 
-    if (imgui.BeginTable(tid('##jg_items'), 5, table_flags, { 0, -56 })) then
+    if (imgui.BeginTable(tid('##jg_items'), 5, table_flags, sizes.jg_table)) then
         imgui.TableSetupColumn('Slot', ImGuiTableColumnFlags_WidthFixed, 50);
         imgui.TableSetupColumn('Name', ImGuiTableColumnFlags_WidthStretch);
         imgui.TableSetupColumn('ID',   ImGuiTableColumnFlags_WidthFixed, 55);
@@ -1456,9 +1568,9 @@ local function render_jobgear()
     render_jg_search_popup();
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Item Search View
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function render_item_search()
     -- Cache build button / status
@@ -1483,7 +1595,7 @@ local function render_item_search()
 
     -- Search box
     imgui.PushItemWidth(300);
-    local changed = imgui.InputText('Search##item_search', ui.item_search_text, ui.item_search_text_size, ImGuiInputTextFlags_EnterReturnsTrue);
+    local changed = imgui.InputTextWithHint('Search##item_search', 'Search items...', ui.item_search_text, ui.item_search_text_size, ImGuiInputTextFlags_EnterReturnsTrue);
     imgui.PopItemWidth();
     imgui.SameLine();
     if (imgui.Button('Search') or changed) then
@@ -1520,7 +1632,7 @@ local function render_item_search()
         ImGuiTableFlags_ScrollY
     );
 
-    if (imgui.BeginTable(tid('##item_results'), 5, table_flags, { 0, -1 })) then
+    if (imgui.BeginTable(tid('##item_results'), 5, table_flags, sizes.item_table)) then
         imgui.TableSetupColumn('Name',   ImGuiTableColumnFlags_WidthStretch);
         imgui.TableSetupColumn('ID',     ImGuiTableColumnFlags_WidthFixed, 55);
         imgui.TableSetupColumn('Type',   ImGuiTableColumnFlags_WidthFixed, 65);
@@ -1557,9 +1669,9 @@ local function render_item_search()
     end
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Status Bar
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 local function render_status_bar()
     imgui.Separator();
@@ -1577,7 +1689,7 @@ local function render_status_bar()
     local cursor_x = imgui.GetCursorPosX();
     local avail_w = imgui.GetContentRegionAvail();
     imgui.SameLine(cursor_x + avail_w - 75);
-    imgui.PushStyleColor(ImGuiCol_Button, { 0.3, 0.3, 0.3, 1.0 });
+    imgui.PushStyleColor(ImGuiCol_Button, btn_colors.reset);
     if (imgui.Button('Reset UI')) then
         ui.reset_pending = true;
     end
@@ -1593,8 +1705,8 @@ local function render_status_bar()
         imgui.SameLine();
         imgui.TextColored(colors.running, text);
         imgui.SameLine();
-        imgui.PushStyleColor(ImGuiCol_Button, { 0.8, 0.2, 0.2, 1.0 });
-        imgui.PushStyleColor(ImGuiCol_ButtonHovered, { 1.0, 0.3, 0.3, 1.0 });
+        imgui.PushStyleColor(ImGuiCol_Button, btn_colors.stop);
+        imgui.PushStyleColor(ImGuiCol_ButtonHovered, btn_colors.stop_hover);
         if (imgui.Button('Stop')) then
             ui.stop_queue();
         end
@@ -1602,12 +1714,21 @@ local function render_status_bar()
     end
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Main Render
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 function ui.render()
     if (not ui.is_open[1]) then return; end
+
+    -- Don't render until character is in a zone (not character select screen)
+    local player = GetPlayerEntity();
+    if (player == nil) then return; end
+    local mem = AshitaCore:GetMemoryManager();
+    if (mem == nil) then return; end
+    local party = mem:GetParty();
+    if (party == nil) then return; end
+    if ((party:GetMemberZone(0) or 0) == 0) then return; end
 
     -- Handle pending UI reset: change table salt so ImGui forgets all saved column widths
     if (ui.reset_pending) then
@@ -1616,12 +1737,12 @@ function ui.render()
         ui.current_view = ui.VIEW_CATEGORIES;
         ui.selected_category = 0;
         -- Force window back to default size/position
-        imgui.SetNextWindowSize({ 680, 450, }, ImGuiCond_Always);
-        imgui.SetNextWindowPos({ 100, 100, }, ImGuiCond_Always);
+        imgui.SetNextWindowSize(sizes.window, ImGuiCond_Always);
+        imgui.SetNextWindowPos(sizes.window_pos, ImGuiCond_Always);
         print(chat.header('gmtools'):append(chat.success('UI reset to defaults.')));
     end
-    imgui.SetNextWindowSize({ 680, 450, }, ImGuiCond_FirstUseEver);
-    imgui.SetNextWindowSizeConstraints({ 500, 300, }, { FLT_MAX, FLT_MAX, });
+    imgui.SetNextWindowSize(sizes.window, ImGuiCond_FirstUseEver);
+    imgui.SetNextWindowSizeConstraints(sizes.window_min, sizes.window_max);
 
     if (imgui.Begin('GM Tools', ui.is_open, ImGuiWindowFlags_None)) then
         local is_running = #ui.cmd_queue > 0;
@@ -1629,7 +1750,7 @@ function ui.render()
         -- Top bar: View toggle buttons
         local function view_button(label, view_id)
             if (ui.current_view == view_id) then
-                imgui.PushStyleColor(ImGuiCol_Button, { 0.3, 0.5, 0.8, 1.0 });
+                imgui.PushStyleColor(ImGuiCol_Button, btn_colors.view_active);
             end
             if (imgui.Button(label)) then
                 ui.current_view = view_id;
@@ -1657,55 +1778,57 @@ function ui.render()
         imgui.NewLine();
         imgui.Separator();
 
-        -- Disable interaction while preset is running
-        if (is_running) then imgui.BeginDisabled(); end
-
         -- Main content area
-        if (ui.current_view == ui.VIEW_CATEGORIES) then
-            -- Sidebar + Detail panel layout
-            render_sidebar();
-            imgui.SameLine();
-
-            -- Detail panel
-            imgui.BeginChild('##detail', { 0, -24, }, ImGuiChildFlags_Borders);
-                local cat_idx = ui.selected_category + 1;
-                local cat = ui.commands.categories[cat_idx];
-                if (cat ~= nil) then
-                    imgui.TextColored(colors.header, cat.name);
-                    imgui.Separator();
-                    render_command_table(cat_idx, cat);
-                else
-                    imgui.TextColored(colors.muted, 'Select a category from the sidebar.');
-                end
-            imgui.EndChild();
-
-        elseif (ui.current_view == ui.VIEW_FAVORITES) then
-            imgui.BeginChild('##fav_panel', { 0, -24, }, ImGuiChildFlags_Borders);
-                render_favorites();
-            imgui.EndChild();
-
-        elseif (ui.current_view == ui.VIEW_PRESETS) then
-            imgui.BeginChild('##preset_panel', { 0, -24, }, ImGuiChildFlags_Borders);
+        -- Presets tab manages its own disabled state (progress bar + stop must stay interactive)
+        if (ui.current_view == ui.VIEW_PRESETS) then
+            imgui.BeginChild('##preset_panel', sizes.panel, ImGuiChildFlags_Borders);
                 render_presets();
             imgui.EndChild();
+        else
+            -- Disable interaction while preset is running (all other tabs)
+            if (is_running) then imgui.BeginDisabled(); end
 
-        elseif (ui.current_view == ui.VIEW_JOBGEAR) then
-            imgui.BeginChild('##jobgear_panel', { 0, -24, }, ImGuiChildFlags_Borders);
-                render_jobgear();
-            imgui.EndChild();
+            if (ui.current_view == ui.VIEW_CATEGORIES) then
+                -- Sidebar + Detail panel layout
+                render_sidebar();
+                imgui.SameLine();
 
-        elseif (ui.current_view == ui.VIEW_ITEM_SEARCH) then
-            imgui.BeginChild('##search_panel', { 0, -24, }, ImGuiChildFlags_Borders);
-                render_item_search();
-            imgui.EndChild();
+                -- Detail panel
+                imgui.BeginChild('##detail', sizes.panel, ImGuiChildFlags_Borders);
+                    local cat_idx = ui.selected_category + 1;
+                    local cat = ui.commands.categories[cat_idx];
+                    if (cat ~= nil) then
+                        imgui.TextColored(colors.header, cat.name);
+                        imgui.Separator();
+                        render_command_table(cat_idx, cat);
+                    else
+                        imgui.TextColored(colors.muted, 'Select a category from the sidebar.');
+                    end
+                imgui.EndChild();
 
-        elseif (ui.current_view == ui.VIEW_HISTORY) then
-            imgui.BeginChild('##hist_panel', { 0, -24, }, ImGuiChildFlags_Borders);
-                render_history();
-            imgui.EndChild();
+            elseif (ui.current_view == ui.VIEW_FAVORITES) then
+                imgui.BeginChild('##fav_panel', sizes.panel, ImGuiChildFlags_Borders);
+                    render_favorites();
+                imgui.EndChild();
+
+            elseif (ui.current_view == ui.VIEW_JOBGEAR) then
+                imgui.BeginChild('##jobgear_panel', sizes.panel, ImGuiChildFlags_Borders);
+                    render_jobgear();
+                imgui.EndChild();
+
+            elseif (ui.current_view == ui.VIEW_ITEM_SEARCH) then
+                imgui.BeginChild('##search_panel', sizes.panel, ImGuiChildFlags_Borders);
+                    render_item_search();
+                imgui.EndChild();
+
+            elseif (ui.current_view == ui.VIEW_HISTORY) then
+                imgui.BeginChild('##hist_panel', sizes.panel, ImGuiChildFlags_Borders);
+                    render_history();
+                imgui.EndChild();
+            end
+
+            if (is_running) then imgui.EndDisabled(); end
         end
-
-        if (is_running) then imgui.EndDisabled(); end
 
         -- Status bar
         render_status_bar();

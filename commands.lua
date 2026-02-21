@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.0 - Command Definitions
+    GM Tools v1.0.3 - Command Definitions
     All GM commands organized by category with argument type metadata.
 
     Argument types -> ImGui widget mapping:
@@ -23,9 +23,9 @@ require 'common';
 
 local commands = {};
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Lookup tables for combo/select dropdowns
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 commands.jobs = T{
     { id = 1,  name = 'WAR' }, { id = 2,  name = 'MNK' }, { id = 3,  name = 'WHM' },
@@ -364,9 +364,9 @@ commands.nations = T{
     { id = 2, name = 'Windurst' },
 };
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Command definitions by category
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 commands.categories = T{
     --
@@ -402,7 +402,7 @@ commands.categories = T{
         icon = 'C',
         commands = T{
             { name = 'Set Level',        cmd = '!setplayerlevel',   desc = 'Set character level',                args = {{ name = 'Level', type = 'int', default = 99 }} },
-            { name = 'Change Job',       cmd = '!changejob',       desc = 'Change main job',                    args = {{ name = 'Job', type = 'select', options = 'jobs' }} },
+            { name = 'Change Job',       cmd = '!changejob',       desc = 'Change main job + level + master',   args = {{ name = 'Job', type = 'select', options = 'jobs' }, { name = 'Level', type = 'int', default = 99 }, { name = 'Master', type = 'int', default = 1 }} },
             { name = 'Change Sub Job',   cmd = '!changesjob',      desc = 'Change sub job',                     args = {{ name = 'Job', type = 'select', options = 'jobs' }} },
             { name = 'Master Job',       cmd = '!masterjob',       desc = 'Master current job (max job points)', args = {} },
             { name = 'Give XP',          cmd = '!givexp',          desc = 'Give experience points',             args = {{ name = 'Amount', type = 'int', default = 10000 }} },
@@ -412,7 +412,7 @@ commands.categories = T{
             { name = 'Set Capacity Pts', cmd = '!setcapacitypoints', desc = 'Set capacity points',              args = {{ name = 'Amount', type = 'int', default = 30000 }} },
             { name = 'Set Rank',         cmd = '!setrank',         desc = 'Set nation mission rank (1-10)',     args = {{ name = 'Rank', type = 'int', default = 10 }} },
             { name = 'Set Nation',       cmd = '!setplayernation', desc = 'Set player allegiance nation',       args = {{ name = 'Nation', type = 'select', options = 'nations' }} },
-            { name = 'Race Change',      cmd = '!racechange',      desc = 'Change character race (model ID)',   args = {{ name = 'ModelID', type = 'int' }}, perm = 3 },
+            { name = 'Race Change',      cmd = '!racechange',      desc = 'Grant 14-day race change token',     args = {{ name = 'Player', type = 'string' }}, perm = 3 },
             { name = 'Costume',          cmd = '!costume',         desc = 'Set player costume model',              args = {{ name = 'CostumeID', type = 'int' }} },
             { name = 'Costume 2',        cmd = '!costume2',        desc = 'Set player costume2 model',             args = {{ name = 'CostumeID', type = 'int' }} },
             { name = 'Set Model',        cmd = '!setplayermodel',  desc = 'Set player model by slot',              args = {{ name = 'Model', type = 'int' }, { name = 'Slot', type = 'int' }} },
@@ -477,7 +477,7 @@ commands.categories = T{
             { name = 'Add Lights',        cmd = '!addlights',        desc = 'Add Abyssea lights by type',            args = {{ name = 'LightType', type = 'string' }, { name = 'Amount', type = 'int' }} },
             { name = 'Reset Lights',      cmd = '!resetlights',      desc = 'Reset all Abyssea lights to 0',         args = {} },
             { name = 'Give Linkshell',    cmd = '!givels',           desc = 'Create a linkpearl for a LS',           args = {{ name = 'LSName', type = 'string' }} },
-            { name = 'Give Magian Item',  cmd = '!givemagianitem',   desc = 'Give Magian trial reward item',         args = {{ name = 'TrialID', type = 'int' }} },
+            { name = 'Give Magian Item',  cmd = '!givemagianitem',   desc = 'Give Magian trial reward item',         args = {{ name = 'Player', type = 'string' }, { name = 'TrialID', type = 'int' }} },
             { name = 'Add Treasure',      cmd = '!addtreasure',      desc = 'Add item to treasure pool',             args = {{ name = 'ItemID', type = 'int' }} },
             { name = 'Del Container',     cmd = '!delcontaineritems', desc = 'Delete all items in a container',      args = {{ name = 'Container', type = 'int' }} },
         },
@@ -511,12 +511,12 @@ commands.categories = T{
             { name = 'Spawn Mob',     cmd = '!spawnmob',     desc = 'Spawn a mob by ID at your position',  args = {{ name = 'MobID', type = 'int' }} },
             { name = 'Despawn Mob',   cmd = '!despawnmob',   desc = 'Despawn a mob by ID',                 args = {{ name = 'MobID', type = 'int' }} },
             { name = 'Mob Here',      cmd = '!mobhere',      desc = 'Move mob to your position',           args = {{ name = 'MobID', type = 'int' }} },
-            { name = 'Set Mob Level', cmd = '!setmoblevel',  desc = 'Set mob level',                       args = {{ name = 'MobID', type = 'int' }, { name = 'Level', type = 'int', default = 1 }} },
+            { name = 'Set Mob Level', cmd = '!setmoblevel',  desc = 'Set targeted mob level',              args = {{ name = 'Level', type = 'int', default = 1 }} },
             { name = 'Mob Skill',     cmd = '!mobskill',     desc = 'Force mob to use a skill',            args = {{ name = 'SkillID', type = 'int' }} },
             { name = 'Provoke All',   cmd = '!provokeall',   desc = 'Aggro all nearby mobs',               args = {} },
             { name = 'Get Enmity',    cmd = '!getenmity',    desc = 'Show enmity table for target',        args = {}, perm = 2 },
             { name = 'NPC Here',      cmd = '!npchere',      desc = 'Move NPC to your position',           args = {{ name = 'NPCID', type = 'int' }} },
-            { name = 'Set Mob Flags', cmd = '!setmobflags',  desc = 'Set mob render flags',                args = {{ name = 'MobID', type = 'int' }, { name = 'Flags', type = 'int' }} },
+            { name = 'Set Mob Flags', cmd = '!setmobflags',  desc = 'Set mob nameflags',                   args = {{ name = 'Flags', type = 'int' }, { name = 'MobID', type = 'int' }} },
             { name = 'Get Mob Flags', cmd = '!getmobflags',  desc = 'Show mob render flags',               args = {{ name = 'MobID', type = 'int' }} },
             { name = 'Rename',        cmd = '!rename',       desc = 'Rename target entity',                args = {{ name = 'Name', type = 'string' }} },
             { name = 'Get ID',        cmd = '!getid',        desc = 'Show target entity server ID',        args = {} },
@@ -543,7 +543,7 @@ commands.categories = T{
             { name = 'Update Conquest',  cmd = '!updateconquest',  desc = 'Force conquest update',               args = {} },
             { name = 'Conquest Nation',  cmd = '!cnation',         desc = 'Set zone conquest nation',            args = {{ name = 'Nation', type = 'select', options = 'nations' }} },
             { name = 'Auction House',    cmd = '!ah',              desc = 'Open Auction House anywhere',         args = {} },
-            { name = 'Set Music',        cmd = '!setmusic',        desc = 'Change zone background music',        args = {{ name = 'MusicID', type = 'int' }} },
+            { name = 'Set Music',        cmd = '!setmusic',        desc = 'Change client music (type 0-7)',      args = {{ name = 'Type', type = 'int', default = 0 }, { name = 'SongID', type = 'int' }} },
             { name = 'Animate NPC',      cmd = '!animatenpc',      desc = 'Change NPC animation',                    args = {{ name = 'NPCID', type = 'string' }, { name = 'AnimID', type = 'string' }} },
             { name = 'Animate Sub NPC',  cmd = '!animatesubnpc',   desc = 'Change NPC sub-animation',                args = {{ name = 'NPCID', type = 'string' }, { name = 'AnimID', type = 'string' }} },
             { name = 'Animation',        cmd = '!animation',       desc = 'Set player animation',                    args = {{ name = 'AnimID', type = 'string' }} },

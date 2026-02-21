@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.0 - GM Command Helper for Ashita v4
+    GM Tools v1.0.3 - GM Command Helper for Ashita v4
 
     Provides an ImGui GUI for executing LandSandBoat GM commands.
 
@@ -16,12 +16,12 @@
         /gm search <item> - Search items by name (e.g., /gm search mythic)
 
     Author: SQLCommit
-    Version: 1.0.0
+    Version: 1.0.3
 ]]--
 
 addon.name      = 'gmtools';
 addon.author    = 'SQLCommit';
-addon.version   = '1.0.0';
+addon.version   = '1.0.3';
 addon.desc      = 'GM command helper with ImGui UI for LandSandBoat servers.';
 addon.link      = 'https://github.com/SQLCommit/gmtools';
 
@@ -39,8 +39,10 @@ local jobgear  = require 'jobgear';
 -- Default Settings (saved per-character via Ashita settings)
 -------------------------------------------------------------------------------
 local default_settings = T{
-    queue_delay = 1.5,
-    gm_level    = 5,
+    queue_delay     = 1.5,
+    gm_level        = 5,
+    presets_seeded  = false,
+    show_on_load    = true,
 };
 
 -------------------------------------------------------------------------------
@@ -62,13 +64,19 @@ local function print_help()
         { '/gm search <item>',  'Search items by name (e.g., /gm search sword).' },
     };
     cmds:ieach(function (v)
-        print(chat.header(addon.name):append(chat.error('Usage: ')):append(chat.message(v[1]):append(' - ')):append(chat.color1(6, v[2])));
+        print(chat.header(addon.name):append(chat.success(v[1])):append(chat.message(' - ' .. v[2])));
     end);
 
-    -- List available presets
-    print(chat.header(addon.name):append(chat.message('Built-in presets:')));
-    for _, p in ipairs(presets.defaults) do
-        print(chat.header(addon.name):append(chat.success('  ' .. p.name)):append(chat.message(' - ' .. p.desc)));
+    -- List available presets (from DB)
+    print(chat.header(addon.name):append(chat.message('Available presets:')));
+    local all_presets = db.get_custom_presets();
+    for _, p in ipairs(all_presets) do
+        local desc_str = p.desc or '';
+        if (desc_str ~= '') then desc_str = ' - ' .. desc_str; end
+        print(chat.header(addon.name):append(chat.success('  ' .. p.name)):append(chat.message(desc_str)));
+    end
+    if (#all_presets == 0) then
+        print(chat.header(addon.name):append(chat.message('  (no presets - use Restore Defaults in the Presets tab)')));
     end
 
     -- List available jobs
@@ -100,7 +108,21 @@ ashita.events.register('load', 'gmtools_load', function ()
     db.init(config_path);
     ui.init(commands, presets, db, jobgear, s);
 
-    print(chat.header(addon.name):append(chat.message('Loaded. Use ')):append(chat.success('/gm')):append(chat.message(' to toggle window.')));
+    -- Apply show_on_load setting
+    if (not s.show_on_load) then
+        ui.is_open[1] = false;
+    end
+
+    -- Seed built-in presets into DB on first run
+    if (not s.presets_seeded) then
+        if (db.seed_defaults(presets.defaults)) then
+            s.presets_seeded = true;
+            settings.save();
+            print(chat.header(addon.name):append(chat.message('Built-in presets imported to database.')));
+        end
+    end
+
+    print(chat.header(addon.name):append(chat.message('v' .. addon.version .. ' loaded. Use ')):append(chat.success('/gm')):append(chat.message(' to toggle window.')));
 end);
 
 ashita.events.register('unload', 'gmtools_unload', function ()

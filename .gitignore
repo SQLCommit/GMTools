@@ -5,3 +5,11 @@
 
 # Ashita per-character settings (generated at runtime)
 settings/
+
+# Debug logs
+*.log
+
+# Screenshots and temp files
+*.png
+*.jpg
+*.tmp

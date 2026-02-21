@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.0 - Job Gear Definitions
+    GM Tools v1.0.3 - Job Gear Definitions
     Per-job gear sets organized by equipment slot.
     Each slot supports multiple items for multi-set loadouts.
     All item IDs verified against LSB item_basic.sql and item_equipment.sql.
@@ -22,9 +22,9 @@ jobgear.slot_order = T{
     'Neck', 'Waist', 'Ear1', 'Ear2', 'Ring1', 'Ring2', 'Back',
 };
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Utility Functions
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 -- Deep copy a slots table (returns new table with T{} for each slot)
 function jobgear.copy_slots(slots)
@@ -75,7 +75,7 @@ function jobgear.get_defaults(job_name)
     return nil;
 end
 
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Per-Job Gear Definitions
 -- Weapon slot assignments:
 --   Main = primary weapon (1H sword, 2H greatsword, H2H, etc.)
@@ -85,7 +85,7 @@ end
 -- Armor mapped to Head/Body/Hands/Legs/Feet slots.
 -- Accessories mapped to Neck/Waist/Ear1/Ear2/Ring1/Ring2.
 -- Back = JSE Ambuscade cape (job-specific).
-------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 jobgear.jobs = T{
     -- WAR: Bravura(GA), Ragnarok(GS), Naegling(Sword); Sakpata armor; melee acc

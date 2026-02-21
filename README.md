@@ -1,24 +1,22 @@
-# GM Tools v1.0.0 - GM Command Helper for Ashita v4
+# GM Tools v1.0.3 - GM Command Helper for Ashita v4
 
-A comprehensive GM command interface for LandSandBoat private servers. Browse, execute, and manage 150+ GM commands through an ImGui GUI without memorizing syntax or item IDs.
+A comprehensive GM command interface for LandSandBoat private servers. Browse, execute, and manage 184 GM commands through an ImGui GUI without memorizing syntax or item IDs.
 
 ## Features
 
 - **Command Browser** - 11 categories with typed inputs (dropdowns for zones/jobs/weather, integer/float/text fields, checkboxes)
 - **Item Search** - Search all FFXI items by name, give with one click (incremental cache, no frame drops)
 - **Favorites** - Star any command with current arguments, reorder with up/down buttons, persisted in SQLite
-- **Presets** - 11 built-in quick-setup presets + custom preset builder with clipboard JSON export/import
+- **Presets** - 3 built-in quick-setup presets + custom preset builder with clipboard JSON export/import
 - **Job Gear** - Per-job gear loadouts for all 22 jobs with save/reset, copy/paste, add by ID or search
 - **History** - Last 200 executed commands with search and re-run
 - **GM Level Filter** - Filter commands by permission level (Player/GM/SeniorGM/Admin/SuperAdmin/Developer)
-- **Per-Character Settings** - Queue delay and GM level filter saved per character via Ashita's settings module
+- **Per-Character Settings** - Queue delay, GM level filter, and show on load saved per character via Ashita's settings module
 
 ## Requirements
 
-- Ashita v4.30 (uses built-in LuaSQLite3)
+- Ashita v4.30 (uses built-in LuaSQLite3 and ImGui 1.92.3)
 	- This release has only been tested with Ashita v4.30
-- LandSandBoat server
-- GM account (permission level 1+)
 
 ## Installation
 
@@ -44,17 +42,9 @@ A comprehensive GM command interface for LandSandBoat private servers. Browse, e
 
 | Preset | Description |
 |--------|-------------|
-| Max Character | Level 99, master job, cap all skills |
-| All Unlocks | All spells, trusts, weapon skills, maps, mounts, attachments, monstrosity, atma |
-| Rich Character | 10M gil, max inventory size |
-| God Mode | Invincibility + speed 100 + wallhack |
-| Full Unlock | Max + unlocks + subjob/merit/JP menus + rich |
-| Reset Movement | Normal speed, disable wallhack |
-| Combat Ready | Full HP/MP, 3000 TP, god mode |
-| GM Setup | GM flag, hide, speed 50 |
-| Unlock All Jobs | All 22 jobs level 99 mastered + subjob/merit/JP menus |
-| Complete Progression | Enable subjob/merit/JP menus + quest log entries for job unlocks and limit breaks |
-| Ultimate Dev Setup | Everything: all jobs mastered + all unlocks + progression + rich |
+| Full Dev Setup | `!setupchar` (all 22 jobs 99 mastered, skills capped, key items) + all content unlocks + 10M gil + max inventory |
+| Chest & Coffer Kit | Keys for chest/coffer testing (Skeleton Key, Living Key, Thief's Tools + zone-specific keys). Warps to Garlaige Citadel |
+| BCNM Orb Kit | All BCNM orbs (Lv20-60 cap), KSNM orbs (Clotho/Lachesis/Atropos/Themis), 99x seals and crests. Warps to Horlais Peak |
 
 ## Job Gear
 
@@ -73,11 +63,9 @@ gmtools/
   gmtools.lua    -- Entry point, slash commands, events, settings
   ui.lua         -- ImGui UI rendering (all 6 tabs)
   db.lua         -- SQLite persistence (favorites, history, presets, gear overrides)
-  commands.lua   -- 150+ command definitions in 11 categories
-  presets.lua    -- 11 built-in preset definitions
+  commands.lua   -- 184 command definitions in 11 categories
+  presets.lua    -- 3 built-in preset definitions
   jobgear.lua    -- Per-job gear definitions (22 jobs, 16 equipment slots)
-  README.md      -- This file
-  LICENSE        -- MIT License
 ```
 
 ## Data Storage
@@ -90,22 +78,26 @@ gmtools/
 
 ### Performance
 - **Dirty-flag caching**: All DB-backed data uses dirty flags (`favorites_dirty`, `history_dirty`, `custom_presets_dirty`) — UI reads from memory cache, only re-queries on mutation
-- **Combo string cache**: ImGui combo strings (null-delimited) built once and cached
+- **Combo string cache**: ImGui combo strings (null-delimited) built once via `table.concat` and cached (avoids O(n^2) string concatenation)
+- **Item name cache**: `resolve_item_name()` caches `GetItemById()` lookups in a hash table — avoids repeated SDK calls for the same item ID
 - **Item cache**: Incremental build at 2000 items/frame via `GetResourceManager():GetItemById()` to avoid frame drops
+- **SQL-side timestamp formatting**: History queries use `strftime()` in SQL to return pre-formatted time strings — eliminates per-row `os.date()` calls in the render loop
+- **Efficient history cleanup**: Uses `WHERE id <= (SELECT MAX(id) - 200)` instead of a `NOT IN` subquery for O(1) pruning
+- **Transaction-batched reorder**: `normalize_favorite_order()` wraps all UPDATEs in a single transaction with statement reuse (one `prepare`/`finalize`, multiple `bind`/`step`/`reset`)
 - **Deferred saves**: UI sets `settings_dirty` flag, d3d_present handler processes it (decouples rendering from I/O)
 
 ### Command Categories
 1. Teleport (16 commands) - Zone, position, goto, bring, send, speed, wallhack
 2. Character (20 commands) - Level, jobs, XP, merits, rank, race, costume
 3. Skills (17 commands) - Cap skills, learn spells/trusts/WS, crafting
-4. Items (23 commands) - Add/delete items, gil, currency, key items, titles
+4. Items (24 commands) - Add/delete items, gil, currency, key items, titles
 5. Status (10 commands) - HP/MP/TP, god mode, effects
 6. Mobs (18 commands) - Spawn, despawn, mob control, pets
 7. World (14 commands) - Weather, time, conquest, music, animations
-8. Quests (18 commands) - Missions, quests, cutscenes, variables
+8. Quests (17 commands) - Missions, quests, cutscenes, variables
 9. Admin (13 commands) - GM toggle, jail, promote, yell, exec
 10. Reload (7 commands) - Reload scripts, navmesh, recipes
-11. Debug (21 commands) - Stats, mods, variables, packets, instances
+11. Debug (28 commands) - Stats, mods, variables, packets, instances
 
 ### Permission Levels
 | Level | Name | Example Commands |
@@ -119,13 +111,29 @@ gmtools/
 
 ## Version History
 
+### v1.0.3
+- Pre-allocated all ImGui size/position tables and button style color tables (eliminates ~20 per-frame table allocations)
+- Fixed README command counts (177 → 184): Items 23→24, Quests 18→17, Debug 21→28
+- Added `show_on_load` to documented per-character settings
+
+### v1.0.2
+- Added `InputTextWithHint` placeholder text to 5 search/input fields (history search, job gear item search, item search tab, preset name, preset description)
+- Fixed README preset table (was listing 11 old presets, now correctly shows 3 current presets)
+
+### v1.0.1
+- Combo string builder: replaced O(n^2) string concat loop with `table.insert`+`table.concat`
+- Item name cache: `resolve_item_name()` caches SDK lookups in a hash table
+- History cleanup: replaced expensive `NOT IN` subquery with efficient `WHERE id <= (SELECT MAX(id) - 200)`
+- History queries: moved timestamp formatting to SQL `strftime()` (eliminates per-row `os.date()`)
+- Favorite reorder: wrapped in transaction with prepared statement reuse
+
 ### v1.0.0
 - 6 tabs: Categories, Favorites, Presets, Job Gear, Item Search, History
 - SQLite persistence via Ashita v4.30 LuaSQLite3
 - Per-character settings via Ashita's settings module (queue delay, GM level filter)
 - Dirty-flag caching for all DB-backed data
 - Combo string cache and incremental item cache
-- 11 built-in presets including Unlock All Jobs and Ultimate Dev Setup
+- 3 built-in presets (Full Dev Setup, Chest & Coffer Kit, BCNM Orb Kit)
 - 22 job gear definitions with verified item IDs
 - json.encode calls wrapped in pcall for consistent error handling
 - All DB queries use prepared statements
