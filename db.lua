@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.3 - SQLite3 Persistence Layer
+    GM Tools v1.0.4 - SQLite3 Persistence Layer
     Uses Ashita v4.30's built-in LuaSQLite3 for favorites, history, and custom presets.
 
     LuaSQLite3 API reference:

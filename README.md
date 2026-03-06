@@ -1,4 +1,4 @@
-# GM Tools v1.0.3 - GM Command Helper for Ashita v4
+# GM Tools v1.0.4 - GM Command Helper for Ashita v4.3
 
 A comprehensive GM command interface for LandSandBoat private servers. Browse, execute, and manage 184 GM commands through an ImGui GUI without memorizing syntax or item IDs.
 
@@ -15,8 +15,8 @@ A comprehensive GM command interface for LandSandBoat private servers. Browse, e
 
 ## Requirements
 
-- Ashita v4.30 (uses built-in LuaSQLite3 and ImGui 1.92.3)
-	- This release has only been tested with Ashita v4.30
+- Ashita v4.3.0.2 (uses built-in LuaSQLite3)
+	- This release has only been tested with Ashita v4.3.0.2
 
 ## Installation
 
@@ -110,6 +110,9 @@ gmtools/
 | 5 | Developer | `!sleep`, `!addtime`, all `!reload*` commands |
 
 ## Version History
+
+### v1.0.4
+- Fixed view_button Push/Pop style color mismatch (red border flash when switching tabs)
 
 ### v1.0.3
 - Pre-allocated all ImGui size/position tables and button style color tables (eliminates ~20 per-frame table allocations)

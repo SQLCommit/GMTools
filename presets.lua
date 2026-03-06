@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.3 - Preset Definitions
+    GM Tools v1.0.4 - Preset Definitions
     Default presets for Restore Defaults. Custom presets are stored in SQLite.
 ]]--
 

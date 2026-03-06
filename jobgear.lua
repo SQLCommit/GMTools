@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.3 - Job Gear Definitions
+    GM Tools v1.0.4 - Job Gear Definitions
     Per-job gear sets organized by equipment slot.
     Each slot supports multiple items for multi-set loadouts.
     All item IDs verified against LSB item_basic.sql and item_equipment.sql.

@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.3 - GM Command Helper for Ashita v4
+    GM Tools v1.0.4 - GM Command Helper for Ashita v4
 
     Provides an ImGui GUI for executing LandSandBoat GM commands.
 
@@ -16,12 +16,12 @@
         /gm search <item> - Search items by name (e.g., /gm search mythic)
 
     Author: SQLCommit
-    Version: 1.0.3
+    Version: 1.0.4
 ]]--
 
 addon.name      = 'gmtools';
 addon.author    = 'SQLCommit';
-addon.version   = '1.0.3';
+addon.version   = '1.0.4';
 addon.desc      = 'GM command helper with ImGui UI for LandSandBoat servers.';
 addon.link      = 'https://github.com/SQLCommit/gmtools';
 

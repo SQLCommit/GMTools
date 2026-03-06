@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.3 - ImGui UI Rendering
+    GM Tools v1.0.4 - ImGui UI Rendering
     Sidebar + detail panel layout with categories, favorites, presets, and history views.
 ]]--
 
@@ -1749,13 +1749,14 @@ function ui.render()
 
         -- Top bar: View toggle buttons
         local function view_button(label, view_id)
-            if (ui.current_view == view_id) then
+            local is_active = (ui.current_view == view_id);
+            if (is_active) then
                 imgui.PushStyleColor(ImGuiCol_Button, btn_colors.view_active);
             end
             if (imgui.Button(label)) then
                 ui.current_view = view_id;
             end
-            if (ui.current_view == view_id) then
+            if (is_active) then
                 imgui.PopStyleColor();
             end
             imgui.SameLine();

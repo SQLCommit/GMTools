@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.3 - Command Definitions
+    GM Tools v1.0.4 - Command Definitions
     All GM commands organized by category with argument type metadata.
 
     Argument types -> ImGui widget mapping:
