@@ -4,14 +4,15 @@
   "addonFolder": "gmtools",
   "versionFile": "gmtools.lua",
   "versionPattern": "(?m)^\\s*addon\\.version\\s*=\\s*'([0-9]+(?:\\.[0-9]+){1,2})'",
-  "exclude": [
-    "tests",
-    "tools",
-    "TestIcons",
-    "*.bak",
-    "*.log",
-    "*.tmp",
-    "*.db-wal",
-    "*.db-shm"
+  "files": [
+    "commands.lua",
+    "db.lua",
+    "gmtools.lua",
+    "jobgear.lua",
+    "presets.lua",
+    "ui.lua",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ]
 }

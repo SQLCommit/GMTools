@@ -1,31 +1,13 @@
---[[
-    GM Tools v1.0.4 - Command Definitions
-    All GM commands organized by category with argument type metadata.
-
-    Argument types -> ImGui widget mapping:
-        int    -> InputInt
-        float  -> InputFloat
-        string -> InputText
-        select -> Combo (references a lookup table by name)
-        bool   -> Checkbox
-        (none) -> Execute button only
-
-    Permission levels (perm field, default = 1 if omitted):
-        0 = Any player (no GM required)
-        1 = GM (basic)
-        2 = GM (elevated)
-        3 = Admin
-        4 = Super Admin
-        5 = Developer/Owner
-]]--
+-- GM command metadata. Widgets: int/float/string/select/bool map to
+-- InputInt/InputFloat/InputText/Combo/Checkbox.
+-- Permission levels: 0 player, 1 basic GM (default), 2 elevated GM, 3 admin, 4 super admin, 5
+-- developer/owner.
 
 require 'common';
 
 local commands = {};
 
--------------------------------------------------------------------------------
 -- Lookup tables for combo/select dropdowns
--------------------------------------------------------------------------------
 
 commands.jobs = T{
     { id = 1,  name = 'WAR' }, { id = 2,  name = 'MNK' }, { id = 3,  name = 'WHM' },
@@ -39,28 +21,28 @@ commands.jobs = T{
 };
 
 commands.zones = T{
-    -- === Cities: San d'Oria ===
+    -- Cities: San d'Oria
     { id = 230, name = 'Southern San d\'Oria' },
     { id = 231, name = 'Northern San d\'Oria' },
     { id = 232, name = 'Port San d\'Oria' },
     { id = 233, name = 'Chateau d\'Oraguille' },
-    -- === Cities: Bastok ===
+    -- Cities: Bastok
     { id = 234, name = 'Bastok Mines' },
     { id = 235, name = 'Bastok Markets' },
     { id = 236, name = 'Port Bastok' },
     { id = 237, name = 'Metalworks' },
-    -- === Cities: Windurst ===
+    -- Cities: Windurst
     { id = 238, name = 'Windurst Waters' },
     { id = 239, name = 'Windurst Walls' },
     { id = 240, name = 'Port Windurst' },
     { id = 241, name = 'Windurst Woods' },
     { id = 242, name = 'Heaven\'s Tower' },
-    -- === Cities: Jeuno ===
+    -- Cities: Jeuno
     { id = 243, name = 'Ru\'Lude Gardens' },
     { id = 244, name = 'Upper Jeuno' },
     { id = 245, name = 'Lower Jeuno' },
     { id = 246, name = 'Port Jeuno' },
-    -- === Cities: Other Towns ===
+    -- Cities: Other Towns
     { id = 247, name = 'Rabao' },
     { id = 248, name = 'Selbina' },
     { id = 249, name = 'Mhaura' },
@@ -68,37 +50,37 @@ commands.zones = T{
     { id = 251, name = 'Hall of the Gods' },
     { id = 252, name = 'Norg' },
     { id = 26,  name = 'Tavnazian Safehold' },
-    -- === Cities: Aht Urhgan ===
+    -- Cities: Aht Urhgan
     { id = 48,  name = 'Al Zahbi' },
     { id = 50,  name = 'Aht Urhgan Whitegate' },
     { id = 53,  name = 'Nashmau' },
-    -- === Cities: Adoulin ===
+    -- Cities: Adoulin
     { id = 256, name = 'Western Adoulin' },
     { id = 257, name = 'Eastern Adoulin' },
-    -- === Special / GM ===
+    -- Special / GM
     { id = 210, name = 'GM Home' },
     { id = 131, name = 'Mordion Gaol' },
     { id = 280, name = 'Mog Garden' },
-    -- === Overworld: Ronfaure / San d'Oria Region ===
+    -- Overworld: Ronfaure / San d'Oria Region
     { id = 100, name = 'West Ronfaure' },
     { id = 101, name = 'East Ronfaure' },
     { id = 102, name = 'La Theine Plateau' },
     { id = 104, name = 'Jugner Forest' },
     { id = 105, name = 'Batallia Downs' },
-    -- === Overworld: Gustaberg / Bastok Region ===
+    -- Overworld: Gustaberg / Bastok Region
     { id = 106, name = 'North Gustaberg' },
     { id = 107, name = 'South Gustaberg' },
     { id = 108, name = 'Konschtat Highlands' },
     { id = 109, name = 'Pashhow Marshlands' },
     { id = 110, name = 'Rolanberry Fields' },
-    -- === Overworld: Sarutabaruta / Windurst Region ===
+    -- Overworld: Sarutabaruta / Windurst Region
     { id = 115, name = 'West Sarutabaruta' },
     { id = 116, name = 'East Sarutabaruta' },
     { id = 117, name = 'Tahrongi Canyon' },
     { id = 118, name = 'Buburimu Peninsula' },
     { id = 119, name = 'Meriphataud Mountains' },
     { id = 120, name = 'Sauromugue Champaign' },
-    -- === Overworld: Shared / Neutral ===
+    -- Overworld: Shared / Neutral
     { id = 103, name = 'Valkurm Dunes' },
     { id = 111, name = 'Beaucedine Glacier' },
     { id = 112, name = 'Xarcabard' },
@@ -113,7 +95,7 @@ commands.zones = T{
     { id = 127, name = 'Behemoth\'s Dominion' },
     { id = 128, name = 'Valley of Sorrows' },
     { id = 130, name = 'Ru\'Aun Gardens' },
-    -- === Dungeons: Beastmen Strongholds ===
+    -- Dungeons: Beastmen Strongholds
     { id = 140, name = 'Ghelsba Outpost' },
     { id = 141, name = 'Fort Ghelsba' },
     { id = 142, name = 'Yughott Grotto' },
@@ -123,7 +105,7 @@ commands.zones = T{
     { id = 150, name = 'Monastic Cavern' },
     { id = 151, name = 'Castle Oztroja' },
     { id = 152, name = 'Altar Room' },
-    -- === Dungeons: Caves & Mines ===
+    -- Dungeons: Caves & Mines
     { id = 143, name = 'Palborough Mines' },
     { id = 166, name = 'Ranguemont Pass' },
     { id = 167, name = 'Bostaunieux Oubliette' },
@@ -147,7 +129,7 @@ commands.zones = T{
     { id = 208, name = 'Quicksand Caves' },
     { id = 212, name = 'Gustav Tunnel' },
     { id = 213, name = 'Labyrinth of Onzozo' },
-    -- === Dungeons: Towers & Temples ===
+    -- Dungeons: Towers & Temples
     { id = 153, name = 'The Boyahda Tree' },
     { id = 154, name = 'Dragon\'s Aery' },
     { id = 157, name = 'Middle Delkfutt\'s Tower' },
@@ -155,11 +137,11 @@ commands.zones = T{
     { id = 184, name = 'Lower Delkfutt\'s Tower' },
     { id = 159, name = 'Temple of Uggalepih' },
     { id = 160, name = 'Den of Rancor' },
-    -- === Dungeons: Castle Zvahl ===
+    -- Dungeons: Castle Zvahl
     { id = 161, name = 'Castle Zvahl Baileys' },
     { id = 162, name = 'Castle Zvahl Keep' },
     { id = 165, name = 'Throne Room' },
-    -- === Battlefields / Arenas ===
+    -- Battlefields / Arenas
     { id = 139, name = 'Horlais Peak' },
     { id = 144, name = 'Waughroon Shrine' },
     { id = 146, name = 'Balga\'s Dais' },
@@ -167,23 +149,23 @@ commands.zones = T{
     { id = 168, name = 'Chamber of Oracles' },
     { id = 170, name = 'Full Moon Fountain' },
     { id = 206, name = 'Qu\'Bia Arena' },
-    -- === Cloisters ===
+    -- Cloisters
     { id = 201, name = 'Cloister of Gales' },
     { id = 202, name = 'Cloister of Storms' },
     { id = 203, name = 'Cloister of Frost' },
     { id = 207, name = 'Cloister of Flames' },
     { id = 209, name = 'Cloister of Tremors' },
     { id = 211, name = 'Cloister of Tides' },
-    -- === Sky / Tu'Lia ===
+    -- Sky / Tu'Lia
     { id = 177, name = 'Velugannon Palace' },
     { id = 178, name = 'The Shrine of Ru\'Avitau' },
     { id = 179, name = 'Stellar Fulcrum' },
     { id = 180, name = 'La\'Loff Amphitheater' },
     { id = 181, name = 'The Celestial Nexus' },
-    -- === Limbus ===
+    -- Limbus
     { id = 37,  name = 'Temenos' },
     { id = 38,  name = 'Apollyon' },
-    -- === Chains of Promathia ===
+    -- Chains of Promathia
     { id = 1,   name = 'Phanauet Channel' },
     { id = 2,   name = 'Carpenters\' Landing' },
     { id = 3,   name = 'Manaclipper' },
@@ -218,7 +200,7 @@ commands.zones = T{
     { id = 6,   name = 'Bearclaw Pinnacle' },
     { id = 8,   name = 'Boneyard Gully' },
     { id = 10,  name = 'The Shrouded Maw' },
-    -- === Treasures of Aht Urhgan ===
+    -- Treasures of Aht Urhgan
     { id = 51,  name = 'Wajaom Woodlands' },
     { id = 52,  name = 'Bhaflau Thickets' },
     { id = 54,  name = 'Arrapago Reef' },
@@ -245,7 +227,7 @@ commands.zones = T{
     { id = 77,  name = 'Nyzul Isle' },
     { id = 78,  name = 'Hazhalm Testing Grounds' },
     { id = 79,  name = 'Caedarva Mire' },
-    -- === Wings of the Goddess (Past) ===
+    -- Wings of the Goddess (Past)
     { id = 80,  name = 'Southern San d\'Oria [S]' },
     { id = 81,  name = 'East Ronfaure [S]' },
     { id = 82,  name = 'Jugner Forest [S]' },
@@ -273,7 +255,7 @@ commands.zones = T{
     { id = 164, name = 'Garlaige Citadel [S]' },
     { id = 171, name = 'Crawlers\' Nest [S]' },
     { id = 175, name = 'The Eldieme Necropolis [S]' },
-    -- === Dynamis ===
+    -- Dynamis
     { id = 185, name = 'Dynamis - San d\'Oria' },
     { id = 186, name = 'Dynamis - Bastok' },
     { id = 187, name = 'Dynamis - Windurst' },
@@ -284,12 +266,12 @@ commands.zones = T{
     { id = 40,  name = 'Dynamis - Buburimu' },
     { id = 41,  name = 'Dynamis - Qufim' },
     { id = 42,  name = 'Dynamis - Tavnazia' },
-    -- === Dynamis Divergence [D] ===
+    -- Dynamis Divergence [D]
     { id = 294, name = 'Dynamis - San d\'Oria [D]' },
     { id = 295, name = 'Dynamis - Bastok [D]' },
     { id = 296, name = 'Dynamis - Windurst [D]' },
     { id = 297, name = 'Dynamis - Jeuno [D]' },
-    -- === Abyssea ===
+    -- Abyssea
     { id = 15,  name = 'Abyssea - Konschtat' },
     { id = 45,  name = 'Abyssea - Tahrongi' },
     { id = 132, name = 'Abyssea - La Theine' },
@@ -300,7 +282,7 @@ commands.zones = T{
     { id = 253, name = 'Abyssea - Uleguerand' },
     { id = 254, name = 'Abyssea - Grauberg' },
     { id = 255, name = 'Abyssea - Empyreal Paradox' },
-    -- === Seekers of Adoulin ===
+    -- Seekers of Adoulin
     { id = 258, name = 'Rala Waterways' },
     { id = 260, name = 'Yahse Hunting Grounds' },
     { id = 261, name = 'Ceizak Battlegrounds' },
@@ -317,18 +299,18 @@ commands.zones = T{
     { id = 274, name = 'Outer Ra\'Kaznar' },
     { id = 276, name = 'Ra\'Kaznar Inner Court' },
     { id = 284, name = 'Celennia Memorial Library' },
-    -- === Escha / Reisenjima ===
+    -- Escha / Reisenjima
     { id = 288, name = 'Escha - Zi\'Tah' },
     { id = 289, name = 'Escha - Ru\'Aun' },
     { id = 291, name = 'Reisenjima' },
     { id = 292, name = 'Reisenjima Henge' },
-    -- === Walk of Echoes / Other ===
+    -- Walk of Echoes / Other
     { id = 182, name = 'Walk of Echoes' },
     { id = 222, name = 'Provenance' },
     { id = 43,  name = 'Diorama Abdhaljs-Ghelsba' },
     { id = 44,  name = 'Abdhaljs Isle-Purgonorgo' },
     { id = 183, name = 'Maquette Abdhaljs-Legion' },
-    -- === Transport ===
+    -- Transport
     { id = 46,  name = 'Open Sea Route to Al Zahbi' },
     { id = 47,  name = 'Open Sea Route to Mhaura' },
     { id = 220, name = 'Ship bound for Selbina' },
@@ -364,9 +346,7 @@ commands.nations = T{
     { id = 2, name = 'Windurst' },
 };
 
--------------------------------------------------------------------------------
 -- Command definitions by category
--------------------------------------------------------------------------------
 
 commands.categories = T{
     --

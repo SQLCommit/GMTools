@@ -1,17 +1,4 @@
---[[
-    GM Tools v1.0.4 - SQLite3 Persistence Layer
-    Uses Ashita v4.30's built-in LuaSQLite3 for favorites, history, and custom presets.
-
-    LuaSQLite3 API reference:
-        db:exec(sql)                    -- Execute SQL statement
-        db:rows(sql)                    -- Iterator over result rows (as arrays)
-        db:nrows(sql)                   -- Iterator over result rows (as named tables)
-        db:close()                      -- Close database connection
-        db:prepare(sql)                 -- Prepare a statement
-        stmt:bind_values(...)           -- Bind values to prepared statement
-        stmt:step()                     -- Execute step
-        stmt:finalize()                 -- Finalize statement
-]]--
+-- GM Tools SQLite storage for favorites, history and custom presets.
 
 require 'common';
 
@@ -26,9 +13,7 @@ db.favorites_dirty = true;
 db.history_dirty = true;
 db.custom_presets_dirty = true;
 
--------------------------------------------------------------------------------
 -- Initialization
--------------------------------------------------------------------------------
 
 function db.init(addon_path)
     local sqlite3 = require('sqlite3');
@@ -83,9 +68,7 @@ function db.init(addon_path)
     db.normalize_favorite_order();
 end
 
--------------------------------------------------------------------------------
 -- Favorites
--------------------------------------------------------------------------------
 
 function db.get_favorites()
     local results = T{};
@@ -166,9 +149,7 @@ function db.update_favorite_usage(id)
     db.favorites_dirty = true;
 end
 
--------------------------------------------------------------------------------
 -- Favorite Reordering
--------------------------------------------------------------------------------
 
 function db.normalize_favorite_order()
     if (db.conn == nil) then return; end
@@ -275,9 +256,7 @@ function db.move_favorite_down(id)
     db.favorites_dirty = true;
 end
 
--------------------------------------------------------------------------------
 -- History
--------------------------------------------------------------------------------
 
 function db.log_command(cmd)
     if (db.conn == nil) then return; end
@@ -327,9 +306,7 @@ function db.clear_history()
     db.history_dirty = true;
 end
 
--------------------------------------------------------------------------------
 -- Custom Presets
--------------------------------------------------------------------------------
 
 function db.get_custom_presets()
     local results = T{};
@@ -351,7 +328,11 @@ end
 function db.save_custom_preset(name, desc, commands_list)
     if (db.conn == nil) then return; end
 
-    local commands_json = json.encode(commands_list);
+    local ok_enc, commands_json = pcall(json.encode, commands_list);
+    if (not ok_enc or commands_json == nil) then
+        print('[gmtools] Failed to encode preset commands; not saved.');
+        return;
+    end
     local stmt = db.conn:prepare('INSERT INTO custom_presets (name, desc, commands) VALUES (?, ?, ?)');
     if (stmt == nil) then return; end
     stmt:bind_values(name, desc or '', commands_json);
@@ -363,7 +344,11 @@ end
 function db.update_custom_preset(id, name, desc, commands_list)
     if (db.conn == nil) then return; end
 
-    local commands_json = json.encode(commands_list);
+    local ok_enc, commands_json = pcall(json.encode, commands_list);
+    if (not ok_enc or commands_json == nil) then
+        print('[gmtools] Failed to encode preset commands; not updated.');
+        return;
+    end
     local stmt = db.conn:prepare('UPDATE custom_presets SET name = ?, desc = ?, commands = ? WHERE id = ?');
     if (stmt == nil) then return; end
     stmt:bind_values(name, desc or '', commands_json, id);
@@ -403,10 +388,12 @@ function db.seed_defaults(preset_defaults)
     local ins = db.conn:prepare('INSERT INTO custom_presets (name, desc, commands) VALUES (?, ?, ?)');
     if (ins == nil) then db.conn:exec('ROLLBACK'); return false; end
     for _, preset in ipairs(preset_defaults) do
-        local commands_json = json.encode(preset.commands);
-        ins:bind_values(preset.name, preset.desc or '', commands_json);
-        ins:step();
-        ins:reset();
+        local ok_enc, commands_json = pcall(json.encode, preset.commands);
+        if (ok_enc and commands_json ~= nil) then
+            ins:bind_values(preset.name, preset.desc or '', commands_json);
+            ins:step();
+            ins:reset();
+        end
     end
     ins:finalize();
     db.conn:exec('COMMIT');
@@ -414,9 +401,7 @@ function db.seed_defaults(preset_defaults)
     return true;
 end
 
--------------------------------------------------------------------------------
 -- Job Gear Overrides
--------------------------------------------------------------------------------
 
 function db.has_job_gear_override(job_name)
     if (db.conn == nil) then return false; end
@@ -485,9 +470,7 @@ function db.delete_job_gear(job_name)
     stmt:finalize();
 end
 
--------------------------------------------------------------------------------
 -- Cleanup
--------------------------------------------------------------------------------
 
 function db.close()
     if (db.conn ~= nil) then

@@ -30,7 +30,7 @@ presets.defaults = T{
         },
     },
 
-    -- LootScope Testing Presets
+    -- Loot testing presets
 
     {
         name = 'Chest & Coffer Kit',

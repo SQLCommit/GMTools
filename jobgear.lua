@@ -1,15 +1,4 @@
---[[
-    GM Tools v1.0.4 - Job Gear Definitions
-    Per-job gear sets organized by equipment slot.
-    Each slot supports multiple items for multi-set loadouts.
-    All item IDs verified against LSB item_basic.sql and item_equipment.sql.
-
-    Slot order matches FFXI equipment layout:
-        Main, Sub, Range, Ammo, Head, Body, Hands, Legs, Feet,
-        Neck, Waist, Ear1, Ear2, Ring1, Ring2, Back
-
-    Users can customize loadouts via the UI and save to SQLite.
-]]--
+-- Default per-job, per-slot gear sets. Each slot may contain multiple items.
 
 require 'common';
 
@@ -22,9 +11,7 @@ jobgear.slot_order = T{
     'Neck', 'Waist', 'Ear1', 'Ear2', 'Ring1', 'Ring2', 'Back',
 };
 
--------------------------------------------------------------------------------
 -- Utility Functions
--------------------------------------------------------------------------------
 
 -- Deep copy a slots table (returns new table with T{} for each slot)
 function jobgear.copy_slots(slots)
@@ -75,17 +62,7 @@ function jobgear.get_defaults(job_name)
     return nil;
 end
 
--------------------------------------------------------------------------------
--- Per-Job Gear Definitions
--- Weapon slot assignments:
---   Main = primary weapon (1H sword, 2H greatsword, H2H, etc.)
---   Sub  = off-hand (shield, grip, dual-wield weapon)
---   Range = ranged weapon (bow, gun, crossbow)
---   Ammo = ammo/throwing items
--- Armor mapped to Head/Body/Hands/Legs/Feet slots.
--- Accessories mapped to Neck/Waist/Ear1/Ear2/Ring1/Ring2.
--- Back = JSE Ambuscade cape (job-specific).
--------------------------------------------------------------------------------
+-- Default job loadouts. Sub holds shields, grips or off-hand weapons; Back holds the job cape.
 
 jobgear.jobs = T{
     -- WAR: Bravura(GA), Ragnarok(GS), Naegling(Sword); Sakpata armor; melee acc
