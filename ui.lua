@@ -1,5 +1,5 @@
 --[[
-    GM Tools v1.0.4 - ImGui UI Rendering
+    GM Tools v1.0.5 - ImGui UI Rendering
     Sidebar + detail panel layout with categories, favorites, presets, and history views.
 ]]--
 

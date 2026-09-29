@@ -2,6 +2,10 @@
 
 [Back to GMTools](README.md)
 
+## v1.0.5
+
+- Fixed: the window opened at startup even with Show On Load off.
+
 ## v1.0.4
 
 - Fixed a style-color imbalance that caused a red border flash when switching tabs.

@@ -1,6 +1,6 @@
 # Release packaging
 
-Use **Prepare release** and **Release check** as before. The tag must match `addon.version`, for example `v1.0.4`.
+Use **Prepare release** and **Release check** as before. The tag must match `addon.version`, for example `v1.0.5`.
 
 - `.github/release.json` lists every file allowed in the ZIP. Add new runtime modules there; missing files stop packaging.
 - Edit the root `README.md` for GitHub. Packaging converts it to plain Markdown inside `addons/gmtools/README.md`, preserving the source.

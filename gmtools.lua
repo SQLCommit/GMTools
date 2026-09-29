@@ -3,7 +3,7 @@
 
 addon.name      = 'gmtools';
 addon.author    = 'SQLCommit';
-addon.version   = '1.0.4';
+addon.version   = '1.0.5';
 addon.desc      = 'GM command helper with ImGui UI for LandSandBoat servers.';
 addon.link      = 'https://github.com/SQLCommit/gmtools';
 
@@ -11,6 +11,7 @@ require 'common';
 
 local chat     = require 'chat';
 local settings = require 'settings';
+local startup_pending = false;  -- waits for character settings
 local ui       = require 'ui';
 local db       = require 'db';
 local commands = require 'commands';
@@ -90,9 +91,12 @@ ashita.events.register('load', 'gmtools_load', function ()
     db.init(config_path);
     ui.init(commands, presets, db, jobgear, s);
 
-    -- Apply show_on_load setting
-    if (not s.show_on_load) then
+    -- Defaults until login.
+    if (settings.logged_in) then
+        ui.is_open[1] = s.show_on_load;
+    else
         ui.is_open[1] = false;
+        startup_pending = true;
     end
 
     -- Seed built-in presets into DB on first run
@@ -242,5 +246,9 @@ end);
 settings.register('settings', 'gmtools_settings_update', function(s)
     if (s ~= nil) then
         ui.apply_settings(s);
+        if (startup_pending and settings.logged_in) then
+            startup_pending = false;
+            ui.is_open[1] = s.show_on_load;
+        end
     end
 end);
